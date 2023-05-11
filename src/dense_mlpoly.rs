@@ -147,17 +147,17 @@ impl<F: PrimeField> DensePolynomial<F> {
   }
 
   #[cfg(feature = "multicore")]
-  fn commit_inner(&self, blinds: &[F], gens: &MultiCommitGens) -> PolyCommitment {
+  fn commit_inner<G: CurveGroup<ScalarField = F>>(
+    &self,
+    blinds: &[F],
+    gens: &MultiCommitGens<G>,
+  ) -> PolyCommitment<G> {
     let L_size = blinds.len();
     let R_size = self.Z.len() / L_size;
     assert_eq!(L_size * R_size, self.Z.len());
     let C = (0..L_size)
       .into_par_iter()
-      .map(|i| {
-        self.Z[R_size * i..R_size * (i + 1)]
-          .commit(&blinds[i], gens)
-          .compress()
-      })
+      .map(|i| Commitments::batch_commit(&self.Z[R_size * i..R_size * (i + 1)], &blinds[i], gens))
       .collect();
     PolyCommitment { C }
   }
