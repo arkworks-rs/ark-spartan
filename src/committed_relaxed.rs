@@ -2,28 +2,38 @@
 use crate::r1csproof::R1CSSumcheckGens;
 use crate::unipoly::{CompressedUniPoly, UniPoly};
 
-use super::commitments::{Commitments, MultiCommitGens};
 use super::dense_mlpoly::{
   DensePolynomial, EqPolynomial, PolyCommitment, PolyCommitmentGens, PolyEvalProof,
 };
 use super::errors::ProofVerifyError;
 use super::math::Math;
 use super::r1csinstance::R1CSInstance as SpartanR1CSShape;
-use super::r1csproof::R1CSGens;
 use super::random::RandomTape;
-use super::snark_traits::CommittedRelaxedR1CSSNARKTrait;
+//use super::snark_traits::CommittedRelaxedR1CSSNARKTrait;
 use super::sparse_mlpoly::{SparsePolyEntry, SparsePolynomial};
 use super::sumcheck::SumcheckInstanceProof;
 use super::timer::Timer;
 use super::transcript::{AppendToTranscript, ProofTranscript};
-use ark_ec::msm::VariableBaseMSM;
-use ark_ec::ProjectiveCurve;
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
-use ark_serialize::*;
 use ark_std::{One, Zero};
 use merlin::Transcript;
 
-pub struct CRR1CSProof<G: ProjectiveCurve> {
+pub struct CRR1CSGens<G> {
+  gens_sc: R1CSSumcheckGens<G>,
+  gens_pc: PolyCommitmentGens<G>,
+}
+
+// impl<G: CurveGroup> From<CRR1CSGens<G>> for R1CSGens<G> {
+//   fn from(gens: CRR1CSGens<G>) -> Self {
+//     Self {
+//       gens_sc: gens.gens_sc,
+//       gens_pc: gens.gens_pc,
+//     }
+//   }
+// }
+
+pub struct CRR1CSProof<G: CurveGroup> {
   sc_proof_phase1: SumcheckInstanceProof<G::ScalarField>,
   claims_phase2: (
     G::ScalarField,
@@ -49,7 +59,7 @@ impl<F: PrimeField> SumcheckInstanceProof<F> {
   ) -> (Self, Vec<F>, Vec<F>)
   where
     Func: Fn(&F, &F) -> F,
-    G: ProjectiveCurve<ScalarField = F>,
+    G: CurveGroup<ScalarField = F>,
   {
     let mut e = *claim;
     let mut r: Vec<F> = Vec::new();
@@ -107,7 +117,7 @@ impl<F: PrimeField> SumcheckInstanceProof<F> {
   ) -> (Self, Vec<F>, Vec<F>)
   where
     Func: Fn(&F, &F, &F, &F, &F) -> F,
-    G: ProjectiveCurve<ScalarField = F>,
+    G: CurveGroup<ScalarField = F>,
   {
     let mut e = *claim;
     let mut r: Vec<F> = Vec::new();
@@ -182,7 +192,7 @@ impl<F: PrimeField> SumcheckInstanceProof<F> {
   }
 }
 
-impl<G: ProjectiveCurve> CRR1CSProof<G> {
+impl<G: CurveGroup> CRR1CSProof<G> {
   #[allow(clippy::type_complexity)]
   /// Generates the sumcheck proof that sum_s evals_tau(s) * (evals_Az(s) * evals_Bz(s) - u * evals_Cz(s) - E(s)) == 0.
   /// Note that this proof does not use blinding factors, so this is not zero-knowledge.
@@ -194,7 +204,6 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
     evals_Cz: &mut DensePolynomial<G::ScalarField>,
     evals_E: &mut DensePolynomial<G::ScalarField>,
     u: &G::ScalarField,
-    gens: &R1CSSumcheckGens<G>,
     transcript: &mut Transcript,
   ) -> (
     SumcheckInstanceProof<G::ScalarField>,
@@ -232,9 +241,7 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
     claim: &G::ScalarField,
     evals_z: &mut DensePolynomial<G::ScalarField>,
     evals_ABC: &mut DensePolynomial<G::ScalarField>,
-    gens: &R1CSSumcheckGens<G>,
     transcript: &mut Transcript,
-    random_tape: &mut RandomTape<G>,
   ) -> (
     SumcheckInstanceProof<G::ScalarField>,
     Vec<G::ScalarField>,
@@ -262,7 +269,7 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
     E: Vec<G::ScalarField>,
     comm_W: &G,
     comm_E: &G,
-    gens: &R1CSGens<G>,
+    gens: &CRR1CSGens<G>,
     transcript: &mut Transcript,
     random_tape: &mut RandomTape<G>,
   ) -> (CRR1CSProof<G>, Vec<G::ScalarField>, Vec<G::ScalarField>) {
@@ -275,7 +282,7 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
     // we currently require the number of |inputs| + 1 to be at most number of vars
     assert!(input.len() < vars.len());
     <Transcript as ProofTranscript<G>>::append_scalars(transcript, b"input", input);
-    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"u", &u);
+    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"u", u);
     transcript.append_point(b"comm_W", comm_W);
     transcript.append_point(b"comm_E", comm_E);
 
@@ -310,10 +317,10 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
     let (mut poly_Az, mut poly_Bz, mut poly_Cz) =
       inst.multiply_vec(inst.get_num_cons(), z.len(), &z);
 
-    let poly_E_start = DensePolynomial::new(E.clone());
+    let poly_E_start = DensePolynomial::new(E);
     let mut poly_E_final = poly_E_start.clone();
 
-    let (sc_proof_phase1, rx, _claims_phase1) = CRR1CSProof::prove_phase_one(
+    let (sc_proof_phase1, rx, _claims_phase1) = CRR1CSProof::<G>::prove_phase_one(
       num_rounds_x,
       &mut poly_tau,
       &mut poly_Az,
@@ -321,7 +328,6 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
       &mut poly_Cz,
       &mut poly_E_final,
       u,
-      &gens.gens_sc,
       transcript,
     );
     assert_eq!(poly_tau.len(), 1);
@@ -332,7 +338,7 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
     assert_eq!(poly_E_start.len(), inst.get_num_cons());
     timer_sc_proof_phase1.stop();
 
-    let (tau_claim, Az_claim, Bz_claim, Cz_claim, E_claim) = (
+    let (_, Az_claim, Bz_claim, Cz_claim, E_claim) = (
       &poly_tau[0],
       &poly_Az[0],
       &poly_Bz[0],
@@ -340,10 +346,10 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
       &poly_E_final[0],
     );
 
-    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"Az_claim", &Az_claim);
-    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"Bz_claim", &Bz_claim);
-    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"Cz_claim", &Cz_claim);
-    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"E_claim", &E_claim);
+    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"Az_claim", Az_claim);
+    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"Bz_claim", Bz_claim);
+    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"Cz_claim", Cz_claim);
+    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"E_claim", E_claim);
 
     let timer_sc_proof_phase2 = Timer::new("prove_sc_phase_two");
     // combine the three claims into a single claim
@@ -366,14 +372,12 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
     };
 
     // another instance of the sum-check protocol
-    let (sc_proof_phase2, ry, claims_phase2) = CRR1CSProof::prove_phase_two(
+    let (sc_proof_phase2, ry, _claims_phase2) = CRR1CSProof::<G>::prove_phase_two(
       num_rounds_y,
       &claim_phase2,
       &mut DensePolynomial::new(z),
       &mut DensePolynomial::new(evals_ABC),
-      &gens.gens_sc,
       transcript,
-      random_tape,
     );
     timer_sc_proof_phase2.stop();
 
@@ -412,16 +416,11 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
     (
       CRR1CSProof {
         sc_proof_phase1,
-        claims_phase2: (
-          Az_claim.clone(),
-          Bz_claim.clone(),
-          Cz_claim.clone(),
-          E_claim.clone(),
-        ),
+        claims_phase2: (*Az_claim, *Bz_claim, *Cz_claim, *E_claim),
         sc_proof_phase2,
         eval_vars_at_ry,
         proof_eval_vars_at_ry,
-        eval_error_at_rx: E_claim.clone(),
+        eval_error_at_rx: *E_claim,
         proof_eval_error_at_rx,
       },
       rx,
@@ -440,7 +439,7 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
     comm_E: &G,
     evals: &(G::ScalarField, G::ScalarField, G::ScalarField),
     transcript: &mut Transcript,
-    gens: &R1CSGens<G>,
+    gens: &CRR1CSGens<G>,
   ) -> Result<(Vec<G::ScalarField>, Vec<G::ScalarField>), ProofVerifyError> {
     <Transcript as ProofTranscript<G>>::append_protocol_name(
       transcript,
@@ -468,14 +467,14 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
     let (claim_post_phase1, rx) =
       self
         .sc_proof_phase1
-        .verify(claim_phase1, num_rounds_x, 3, transcript)?;
+        .verify::<G>(claim_phase1, num_rounds_x, 3, transcript)?;
     // perform the intermediate sum-check test with claimed Az, Bz, Cz, and E
     let (Az_claim, Bz_claim, Cz_claim, E_claim) = &self.claims_phase2;
 
-    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"Az_claim", &Az_claim);
-    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"Bz_claim", &Bz_claim);
-    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"Cz_claim", &Cz_claim);
-    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"E_claim", &E_claim);
+    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"Az_claim", Az_claim);
+    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"Bz_claim", Bz_claim);
+    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"Cz_claim", Cz_claim);
+    <Transcript as ProofTranscript<G>>::append_scalar(transcript, b"E_claim", E_claim);
 
     let taus_bound_rx: G::ScalarField = (0..rx.len())
       .map(|i| rx[i] * tau[i] + (G::ScalarField::one() - rx[i]) * (G::ScalarField::one() - tau[i]))
@@ -497,7 +496,7 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
     let (claim_post_phase2, ry) =
       self
         .sc_proof_phase2
-        .verify(claim_phase2, num_rounds_y, 2, transcript)?;
+        .verify::<G>(claim_phase2, num_rounds_y, 2, transcript)?;
 
     // verify Z(ry) proof against the initial commitment `comm_W`
     self.proof_eval_vars_at_ry.verify_plain(
@@ -505,9 +504,7 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
       transcript,
       &ry[1..],
       &self.eval_vars_at_ry,
-      &PolyCommitment {
-        C: vec![comm_W.clone()],
-      },
+      &PolyCommitment { C: vec![*comm_W] },
     )?;
 
     // verify E(rx) proof against the initial commitment `comm_E`
@@ -516,14 +513,12 @@ impl<G: ProjectiveCurve> CRR1CSProof<G> {
       transcript,
       &rx,
       &self.eval_error_at_rx,
-      &PolyCommitment {
-        C: vec![comm_E.clone()],
-      },
+      &PolyCommitment { C: vec![*comm_E] },
     )?;
 
     let poly_input_eval = {
       // constant term
-      let mut input_as_sparse_poly_entries = vec![SparsePolyEntry::new(0, u)];
+      let mut input_as_sparse_poly_entries = vec![SparsePolyEntry::new(0, *u)];
       //remaining inputs
       input_as_sparse_poly_entries.extend(
         (0..input.len())

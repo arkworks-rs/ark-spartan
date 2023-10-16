@@ -13,6 +13,7 @@ extern crate sha3;
 extern crate rayon;
 
 mod commitments;
+mod committed_relaxed;
 mod dense_mlpoly;
 mod errors;
 mod math;
@@ -21,6 +22,7 @@ mod product_tree;
 mod r1csinstance;
 mod r1csproof;
 mod random;
+mod snark_traits;
 mod sparse_mlpoly;
 mod sumcheck;
 mod timer;
