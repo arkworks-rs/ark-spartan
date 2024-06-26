@@ -77,7 +77,7 @@ impl<F: PrimeField> Assignment<F> {
 
   /// pads Assignment to the specified length
   fn pad(&self, len: usize) -> VarsAssignment<F> {
-    // check that the new length is higher than current length
+    // check that the new length is higher than the current length
     assert!(len > self.assignment.len());
 
     let padded_assignment = {
