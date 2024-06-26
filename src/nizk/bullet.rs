@@ -212,7 +212,7 @@ impl<G: CurveGroup> BulletReductionProof<G> {
     Ok((challenges_sq, challenges_inv_sq, s))
   }
 
-  /// This method is for testing that proof generation work,
+  /// This method is for testing that proof generation works,
   /// but for efficiency the actual protocols would use `verification_scalars`
   /// method to combine inner product verification with other checks
   /// in a single multiscalar multiplication.
