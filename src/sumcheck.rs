@@ -245,7 +245,7 @@ impl<F: PrimeField> SumcheckInstanceProof<F> {
         <Transcript as ProofTranscript<G>>::challenge_scalar(transcript, b"challenge_nextround");
 
       r.push(r_j);
-      // bound all tables to the verifier's challenege
+      // bound all tables to the verifier's challenge
       poly_A.bound_poly_var_top(&r_j);
       poly_B.bound_poly_var_top(&r_j);
       poly_C.bound_poly_var_top(&r_j);
