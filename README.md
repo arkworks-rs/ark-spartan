@@ -190,7 +190,7 @@ Finally, we provide an example that specifies a custom R1CS instance instead of 
 
   // R1CS is a set of three sparse matrices A B C, where is a row for every 
   // constraint and a column for every entry in z = (vars, 1, inputs)
-  // An R1CS instance is satisfiable iff:
+  // An R1CS instance is satisfiable if:
   // Az \circ Bz = Cz, where z = (vars, 1, inputs)
 
   // constraint 0 entries in (A,B,C)
