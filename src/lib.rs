@@ -252,7 +252,7 @@ impl<F: PrimeField> Instance<F> {
 }
 
 /// `SNARKGens` holds public parameters for producing and verifying proofs with the Spartan SNARK
-pub struct SNARKGens<G> {
+pub struct SNARKGens<G: CurveGroup> {
   gens_r1cs_sat: R1CSGens<G>,
   gens_r1cs_eval: R1CSCommitmentGens<G>,
 }
@@ -453,7 +453,7 @@ impl<G: CurveGroup> SNARK<G> {
 }
 
 /// `NIZKGens` holds public parameters for producing and verifying proofs with the Spartan NIZK
-pub struct NIZKGens<G> {
+pub struct NIZKGens<G: CurveGroup> {
   gens_r1cs_sat: R1CSGens<G>,
 }
 

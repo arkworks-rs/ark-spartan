@@ -26,12 +26,12 @@ pub struct R1CSProof<G: CurveGroup> {
   pok_claims_phase2: (KnowledgeProof<G>, ProductProof<G>),
   proof_eq_sc_phase1: EqualityProof<G>,
   sc_proof_phase2: ZKSumcheckInstanceProof<G>,
-  comm_vars_at_ry: G,
+  comm_vars_at_ry: G::Affine,
   proof_eval_vars_at_ry: PolyEvalProof<G>,
   proof_eq_sc_phase2: EqualityProof<G>,
 }
 
-pub struct R1CSSumcheckGens<G> {
+pub struct R1CSSumcheckGens<G: CurveGroup> {
   gens_1: MultiCommitGens<G>,
   gens_3: MultiCommitGens<G>,
   gens_4: MultiCommitGens<G>,
@@ -52,7 +52,7 @@ impl<G: CurveGroup> R1CSSumcheckGens<G> {
   }
 }
 
-pub struct R1CSGens<G> {
+pub struct R1CSGens<G: CurveGroup> {
   gens_sc: R1CSSumcheckGens<G>,
   gens_pc: PolyCommitmentGens<G>,
 }
@@ -494,7 +494,7 @@ impl<G: CurveGroup> R1CSProof<G> {
     let scalars = vec![(G::ScalarField::one() - ry[0]), ry[0]];
 
     let bases = vec![
-      self.comm_vars_at_ry.into_affine(),
+      self.comm_vars_at_ry,
       poly_input_eval
         .commit(&G::ScalarField::zero(), &gens.gens_pc.gens.gens_1)
         .into_affine(),

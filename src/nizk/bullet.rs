@@ -15,8 +15,8 @@ use merlin::Transcript;
 
 #[derive(Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct BulletReductionProof<G: CurveGroup> {
-  L_vec: Vec<G>,
-  R_vec: Vec<G>,
+  L_vec: Vec<G::Affine>,
+  R_vec: Vec<G::Affine>,
 }
 
 impl<G: CurveGroup> BulletReductionProof<G> {
@@ -32,18 +32,18 @@ impl<G: CurveGroup> BulletReductionProof<G> {
   /// either 0 or a power of 2.
   pub fn prove(
     transcript: &mut Transcript,
-    Q: &G,
-    G_vec: &[G],
-    H: &G,
+    Q: &G::Affine,
+    G_vec: &[G::Affine],
+    H: &G::Affine,
     a_vec: &[G::ScalarField],
     b_vec: &[G::ScalarField],
     blind: &G::ScalarField,
     blinds_vec: &[(G::ScalarField, G::ScalarField)],
-  ) -> (Self, G, G::ScalarField, G::ScalarField, G, G::ScalarField) {
+  ) -> (Self, G::Affine, G::ScalarField, G::ScalarField, G, G::ScalarField) {
     // Create slices G, H, a, b backed by their respective
     // vectors.  This lets us reslice as we compress the lengths
     // of the vectors in the main loop below.
-    let mut G: &mut [G] = &mut G_vec.to_owned()[..];
+    let mut G = &mut G_vec.to_owned()[..];
     let mut a: &mut [G::ScalarField] = &mut a_vec.to_owned()[..];
     let mut b: &mut [G::ScalarField] = &mut b_vec.to_owned()[..];
 
@@ -88,8 +88,6 @@ impl<G: CurveGroup> BulletReductionProof<G> {
         .copied()
         .collect::<Vec<_>>();
 
-      let bases = G::normalize_batch(bases.as_ref());
-
       let L = VariableBaseMSM::msm(bases.as_ref(), scalars.as_ref()).unwrap();
 
       let scalars = a_R
@@ -106,8 +104,6 @@ impl<G: CurveGroup> BulletReductionProof<G> {
         .copied()
         .collect::<Vec<_>>();
 
-      let bases = G::normalize_batch(bases.as_ref());
-
       let R = VariableBaseMSM::msm(bases.as_ref(), scalars.as_ref()).unwrap();
 
       <Transcript as ProofTranscript<G>>::append_point(transcript, b"L", &L);
@@ -121,7 +117,7 @@ impl<G: CurveGroup> BulletReductionProof<G> {
         a_L[i] = a_L[i] * u + u_inv * a_R[i];
         b_L[i] = b_L[i] * u_inv + u * b_R[i];
 
-        G_L[i] = G_L[i] * u_inv + G_R[i] * u;
+        G_L[i] = (G_L[i] * u_inv + G_R[i] * u).into();
       }
 
       blind_fin = blind_fin + *blind_L * u * u + *blind_R * u_inv * u_inv;
@@ -133,15 +129,17 @@ impl<G: CurveGroup> BulletReductionProof<G> {
       b = b_L;
       G = G_L;
     }
+    let L_vec = CurveGroup::normalize_batch(&L_vec);
+    let R_vec = CurveGroup::normalize_batch(&R_vec);
 
     let Gamma_hat = G[0] * a[0] + *Q * a[0] * b[0] + *H * blind_fin;
 
     (
       BulletReductionProof { L_vec, R_vec },
-      Gamma_hat,
+      Gamma_hat.into(),
       a[0],
       b[0],
-      G[0],
+      G[0].into(),
       blind_fin,
     )
   }
@@ -173,9 +171,9 @@ impl<G: CurveGroup> BulletReductionProof<G> {
 
     // 1. Recompute x_k,...,x_1 based on the proof transcript
     let mut challenges = Vec::with_capacity(lg_n);
-    for (L, R) in self.L_vec.iter().zip(self.R_vec.iter()) {
-      <Transcript as ProofTranscript<G>>::append_point(transcript, b"L", L);
-      <Transcript as ProofTranscript<G>>::append_point(transcript, b"R", R);
+    for (&L, &R) in self.L_vec.iter().zip(self.R_vec.iter()) {
+      <Transcript as ProofTranscript<G>>::append_point(transcript, b"L", &L.into());
+      <Transcript as ProofTranscript<G>>::append_point(transcript, b"R", &R.into());
       challenges.push(<Transcript as ProofTranscript<G>>::challenge_scalar(
         transcript, b"u",
       ));
@@ -222,21 +220,20 @@ impl<G: CurveGroup> BulletReductionProof<G> {
     a: &[G::ScalarField],
     transcript: &mut Transcript,
     Gamma: &G,
-    G: &[G],
+    G: &[G::Affine],
   ) -> Result<(G, G, G::ScalarField), ProofVerifyError> {
     let (u_sq, u_inv_sq, s) = self.verification_scalars(n, transcript)?;
 
-    let group_element = G::normalize_batch(G);
+    let group_element = G;
 
     let G_hat = VariableBaseMSM::msm(group_element.as_ref(), s.as_ref()).unwrap();
 
     let a_hat = inner_product(a, &s);
 
-    let bases = G::normalize_batch(
-      [self.L_vec.as_slice(), self.R_vec.as_slice(), &[*Gamma]]
-        .concat()
-        .as_ref(),
-    );
+    let bases = 
+      [self.L_vec.as_slice(), self.R_vec.as_slice(), &[(*Gamma).into()]]
+        .concat();
+    
     let scalars = u_sq
       .into_iter()
       .chain(u_inv_sq.into_iter())

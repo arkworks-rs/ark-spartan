@@ -1,5 +1,4 @@
 use ark_ec::CurveGroup;
-use ark_ec::VariableBaseMSM;
 use ark_std::rand::SeedableRng;
 use digest::{ExtendableOutput, Input};
 use rand_chacha::ChaCha20Rng;
@@ -7,10 +6,10 @@ use sha3::Shake256;
 use std::io::Read;
 
 #[derive(Debug)]
-pub struct MultiCommitGens<G> {
+pub struct MultiCommitGens<G: CurveGroup> {
   pub n: usize,
-  pub G: Vec<G>,
-  pub h: G,
+  pub G: Vec<G::Affine>,
+  pub h: G::Affine,
 }
 
 impl<G: CurveGroup> MultiCommitGens<G> {
@@ -30,6 +29,7 @@ impl<G: CurveGroup> MultiCommitGens<G> {
     for _ in 0..n + 1 {
       gens.push(G::rand(&mut rng));
     }
+    let gens: Vec<G::Affine> = CurveGroup::normalize_batch(gens.as_ref());
 
     MultiCommitGens {
       n,
@@ -78,12 +78,6 @@ impl<G: CurveGroup> Commitments<G> for G::ScalarField {
 
   fn batch_commit(inputs: &[Self], blind: &G::ScalarField, gens_n: &MultiCommitGens<G>) -> G {
     assert_eq!(gens_n.n, inputs.len());
-
-    let mut bases = CurveGroup::normalize_batch(gens_n.G.as_ref());
-    let mut scalars = inputs.to_vec();
-    bases.push(gens_n.h.into_affine());
-    scalars.push(*blind);
-
-    VariableBaseMSM::msm(bases.as_ref(), scalars.as_ref()).unwrap()
+    G::msm(&gens_n.G, inputs).unwrap() + gens_n.h * blind
   }
 }

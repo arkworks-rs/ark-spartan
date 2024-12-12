@@ -211,7 +211,7 @@ impl<G: CurveGroup> ProductProof<G> {
     let delta = {
       let gens_X = &MultiCommitGens {
         n: 1,
-        G: vec![X],
+        G: vec![X.into()],
         h: gens_n.h,
       };
       b3.commit(&b5, gens_X)
@@ -290,7 +290,7 @@ impl<G: CurveGroup> ProductProof<G> {
         &c,
         &MultiCommitGens {
           n: 1,
-          G: vec![*X],
+          G: vec![(*X).into()],
           h: gens_n.h,
         },
         &z3,
@@ -427,7 +427,7 @@ impl<G: CurveGroup> DotProductProof<G> {
   }
 }
 
-pub struct DotProductProofGens<G> {
+pub struct DotProductProofGens<G: CurveGroup> {
   n: usize,
   pub gens_n: MultiCommitGens<G>,
   pub gens_1: MultiCommitGens<G>,
@@ -500,7 +500,7 @@ impl<G: CurveGroup> DotProductProofLog<G> {
 
     let blind_Gamma = *blind_x + *blind_y;
     let (bullet_reduction_proof, _Gamma_hat, x_hat, a_hat, g_hat, rhat_Gamma) =
-      BulletReductionProof::prove(
+      BulletReductionProof::<G>::prove(
         transcript,
         &gens.gens_1.G[0],
         &gens.gens_n.G,
@@ -515,7 +515,7 @@ impl<G: CurveGroup> DotProductProofLog<G> {
     let delta = {
       let gens_hat = MultiCommitGens {
         n: 1,
-        G: vec![g_hat],
+        G: vec![g_hat.into()],
         h: gens.gens_1.h,
       };
       d.commit(&r_delta, &gens_hat)
